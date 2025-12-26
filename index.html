@@ -1251,6 +1251,18 @@
             return categories.find(cat => cat.value === categoryValue) || { label: categoryValue, icon: '📌' };
         };
 
+        // ==================== IMPORT HELPERS (ADDED) ====================
+        // User chooses Merge or Replace
+        function getImportMode() {
+            const el = document.querySelector('input[name="importMode"]:checked');
+            return el ? el.value : 'merge';
+        }
+
+        // Stable duplicate key
+        function transactionKey(t) {
+            return `${t.type}|${t.amount}|${t.category}|${t.date}|${t.description || ""}|${t.notes || ""}`;
+        }
+
         // ==================== TOAST COMPONENT ====================
         const Toast = ({ message, type, onClose }) => {
             useEffect(() => {
@@ -1259,7 +1271,7 @@
             }, [onClose]);
 
             return (
-                <div className={`toast ${type}`}>
+                <div className={`toast ₹{type}`}>
                     {type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ'} {message}
                 </div>
             );
@@ -1464,7 +1476,7 @@
                 };
 
                 onAddTransaction(newTransaction);
-                addToast(`${formData.type === 'income' ? 'Income' : 'Expense'} added successfully!`, 'success');
+                addToast(`₹{formData.type === 'income' ? 'Income' : 'Expense'} added successfully!`, 'success');
                 
                 // Reset form
                 setFormData({
@@ -1507,7 +1519,7 @@
                                         📉 Expense
                                     </div>
                                     <div 
-                                        className={`type-option income ${formData.type === 'income' ? 'selected' : ''}`}
+                                        className={`type-option income ₹{formData.type === 'income' ? 'selected' : ''}`}
                                         onClick={() => handleChange({ target: { name: 'type', value: 'income' }})}
                                     >
                                         📈 Income
@@ -1521,7 +1533,7 @@
                                     type="text"
                                     id="description"
                                     name="description"
-                                    className={`form-control ${errors.description ? 'error' : ''}`}
+                                    className={`form-control ₹{errors.description ? 'error' : ''}`}
                                     placeholder="Enter description"
                                     value={formData.description}
                                     onChange={handleChange}
@@ -1536,7 +1548,7 @@
                                         type="number"
                                         id="amount"
                                         name="amount"
-                                        className={`form-control ${errors.amount ? 'error' : ''}`}
+                                        className={`form-control ₹{errors.amount ? 'error' : ''}`}
                                         placeholder="0.00"
                                         min="0"
                                         step="0.01"
@@ -1552,7 +1564,7 @@
                                         type="date"
                                         id="date"
                                         name="date"
-                                        className={`form-control ${errors.date ? 'error' : ''}`}
+                                        className={`form-control ₹{errors.date ? 'error' : ''}`}
                                         value={formData.date}
                                         onChange={handleChange}
                                     />
@@ -1565,7 +1577,7 @@
                                 <select
                                     id="category"
                                     name="category"
-                                    className={`form-control ${errors.category ? 'error' : ''}`}
+                                    className={`form-control ₹{errors.category ? 'error' : ''}`}
                                     value={formData.category}
                                     onChange={handleChange}
                                 >
@@ -1714,7 +1726,7 @@
                         const categoryInfo = getCategoryInfo(transaction.category, transaction.type);
                         return (
                             <div key={transaction.id} className="transaction-item">
-                                <div className={`transaction-icon ${transaction.type}`}>
+                                <div className={`transaction-icon ₹{transaction.type}`}>
                                     {categoryInfo.icon}
                                 </div>
                                 <div className="transaction-details">
@@ -1723,7 +1735,7 @@
                                         {categoryInfo.label} • {formatDate(transaction.date)}
                                     </div>
                                 </div>
-                                <div className={`transaction-amount ${transaction.type}`}>
+                                <div className={`transaction-amount ₹{transaction.type}`}>
                                     {transaction.type === 'income' ? '+' : '-'}
                                     {formatCurrency(transaction.amount)}
                                 </div>
@@ -1785,13 +1797,13 @@
                                     <label>Transaction Type</label>
                                     <div className="type-selector">
                                         <div 
-                                            className={`type-option expense ${formData.type === 'expense' ? 'selected' : ''}`}
+                                            className={`type-option expense ₹{formData.type === 'expense' ? 'selected' : ''}`}
                                             onClick={() => handleChange({ target: { name: 'type', value: 'expense' }})}
                                         >
                                             📉 Expense
                                         </div>
                                         <div 
-                                            className={`type-option income ${formData.type === 'income' ? 'selected' : ''}`}
+                                            className={`type-option income ₹{formData.type === 'income' ? 'selected' : ''}`}
                                             onClick={() => handleChange({ target: { name: 'type', value: 'income' }})}
                                         >
                                             📈 Income
@@ -1949,7 +1961,7 @@
                                         <div 
                                             className="chart-bar-fill"
                                             style={{
-                                                width: `${item.percentage}%`,
+                                                width: `₹{item.percentage}%`,
                                                 background: colors[index % colors.length]
                                             }}
                                         />
@@ -1967,102 +1979,216 @@
 
         // ==================== DATA MANAGEMENT COMPONENT ====================
         const DataManagement = ({ transactions, setTransactions, addToast }) => {
-            const handleExport = () => {
-                const dataStr = JSON.stringify(transactions, null, 2);
-                const blob = new Blob([dataStr], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `expense-tracker-${getCurrentDate()}.json`;
-                link.click();
-                URL.revokeObjectURL(url);
-                addToast('Data exported successfully!', 'success');
-            };
+        // ✅ added (modal shown only after user picks a file)
+          const [showImportModal, setShowImportModal] = React.useState(false);
+        const [importMode, setImportMode] = React.useState("merge");
+          const [pendingImportData, setPendingImportData] = React.useState(null);
 
-            const handleExportCSV = () => {
-                const headers = ['Date', 'Description', 'Type', 'Category', 'Amount', 'Notes'];
-                const csvData = transactions.map(t => {
-                    const catInfo = getCategoryInfo(t.category, t.type);
-                    return [
-                        t.date,
-                        `"${t.description}"`,
-                        t.type,
-                        catInfo.label,
-                        t.amount,
-                        `"${t.notes || ''}"`
-                    ].join(',');
-                });
-                
-                const csv = [headers.join(','), ...csvData].join('\n');
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `expense-tracker-${getCurrentDate()}.csv`;
-                link.click();
-                URL.revokeObjectURL(url);
-                addToast('CSV exported successfully!', 'success');
-            };
+    const handleExport = () => {
+        const dataStr = JSON.stringify(transactions, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `expense-tracker-₹{getCurrentDate()}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        addToast('Data exported successfully!', 'success');
+    };
 
-            const handleImport = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
+    const handleExportCSV = () => {
+        const headers = ['Date', 'Description', 'Type', 'Category', 'Amount', 'Notes'];
+        const csvData = transactions.map(t => {
+            const catInfo = getCategoryInfo(t.category, t.type);
+            return [
+                t.date,
+                `"₹{t.description}"`,
+                t.type,
+                catInfo.label,
+                t.amount,
+                `"₹{t.notes || ''}"`
+            ].join(',');
+        });
 
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    try {
-                        const imported = JSON.parse(event.target.result);
-                        if (Array.isArray(imported)) {
-                            setTransactions(imported);
-                            addToast(`Imported ${imported.length} transactions!`, 'success');
-                        } else {
-                            throw new Error('Invalid format');
-                        }
-                    } catch (error) {
-                        addToast('Failed to import data. Please check the file format.', 'error');
-                    }
-                };
-                reader.readAsText(file);
-                e.target.value = '';
-            };
+        const csv = [headers.join(','), ...csvData].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `expense-tracker-₹{getCurrentDate()}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+        addToast('CSV exported successfully!', 'success');
+    };
 
-            const handleClearAll = () => {
-                if (confirm('Are you sure you want to delete ALL transactions? This cannot be undone!')) {
-                    setTransactions([]);
-                    addToast('All transactions cleared!', 'info');
+    // ✅ stable key for duplicate prevention
+    const transactionKey = (t) =>
+        `${t.type}|${t.amount}|${t.category}|${t.date}|${t.description || ""}|${t.notes || ""}`;
+
+    // ✅ runs after user chooses Merge/Replace in the modal
+    const confirmImport = () => {
+        try {
+            const imported = pendingImportData;
+            if (!Array.isArray(imported)) {
+                setShowImportModal(false);
+                setPendingImportData(null);
+                return;
+            }
+
+            if (importMode === "replace") {
+                const ok = confirm(
+                    "This will delete all existing transactions before importing.\n\nDo you want to continue?"
+                );
+                if (!ok) return;
+
+                setTransactions(imported);
+                addToast(`Imported ${imported.length} transactions (replaced).`, "success");
+                setShowImportModal(false);
+                setPendingImportData(null);
+                return;
+            }
+
+            // merge
+            const existingKeys = new Set(transactions.map(transactionKey));
+            const toAdd = [];
+            let skipped = 0;
+
+            for (const t of imported) {
+                const key = transactionKey(t);
+                if (existingKeys.has(key)) {
+                    skipped++;
+                    continue;
                 }
-            };
+                existingKeys.add(key);
+                toAdd.push(t);
+            }
 
-            return (
-                <div className="card">
-                    <div className="card-header">
-                        <h2>⚙️ Data Management</h2>
-                    </div>
-                    <div className="card-body">
-                        <div className="data-actions">
-                            <button className="btn btn-primary btn-sm" onClick={handleExport}>
-                                📥 Export JSON
-                            </button>
-                            <button className="btn btn-primary btn-sm" onClick={handleExportCSV}>
-                                📊 Export CSV
-                            </button>
-                            <label className="btn btn-secondary btn-sm">
-                                📤 Import JSON
-                                <input 
-                                    type="file" 
-                                    className="file-input" 
-                                    accept=".json"
-                                    onChange={handleImport}
-                                />
-                            </label>
-                            <button className="btn btn-danger btn-sm" onClick={handleClearAll}>
-                                🗑️ Clear All
-                            </button>
+            setTransactions(prev => [...prev, ...toAdd]);
+            addToast(`Import complete. Added ${toAdd.length}, skipped ${skipped} duplicates.`, "success");
+
+            setShowImportModal(false);
+            setPendingImportData(null);
+        } catch (err) {
+            addToast("Import failed.", "error");
+            setShowImportModal(false);
+            setPendingImportData(null);
+        }
+    };
+
+    // ✅ file reader stays here; modal appears ONLY after user selects file
+    const handleImport = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const imported = JSON.parse(event.target.result);
+                if (Array.isArray(imported)) {
+                    setPendingImportData(imported);
+                    setImportMode("merge");
+                    setShowImportModal(true);
+                } else {
+                    throw new Error('Invalid format');
+                }
+            } catch (error) {
+                addToast('Failed to import data. Please check the file format.', 'error');
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    };
+
+    const handleClearAll = () => {
+        if (confirm('Are you sure you want to delete ALL transactions? This cannot be undone!')) {
+            setTransactions([]);
+            addToast('All transactions cleared!', 'info');
+        }
+    };
+
+    return (
+        <div className="card">
+            <div className="card-header">
+                <h2>⚙️ Data Management</h2>
+            </div>
+            <div className="card-body">
+                <div className="data-actions">
+                    <button className="btn btn-primary btn-sm" onClick={handleExport}>
+                        📥 Export JSON
+                    </button>
+                    <button className="btn btn-primary btn-sm" onClick={handleExportCSV}>
+                        📊 Export CSV
+                    </button>
+
+                    <label className="btn btn-secondary btn-sm">
+                        📤 Import JSON
+                        <input
+                            type="file"
+                            className="file-input"
+                            accept=".json"
+                            onChange={handleImport}
+                        />
+                    </label>
+
+                    <button className="btn btn-danger btn-sm" onClick={handleClearAll}>
+                        🗑️ Clear All
+                    </button>
+                </div>
+
+                {/* ✅ modal UI (NOT shown until after import click + file selection) */}
+                {showImportModal && (
+                    <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
+                        <div className="modal" onClick={(ev) => ev.stopPropagation()}>
+                            <div className="modal-header">
+                                <h2>📤 Import Options</h2>
+                                <button className="modal-close" onClick={() => setShowImportModal(false)}>
+                                    &times;
+                                </button>
+                            </div>
+
+                            <div className="modal-body">
+                                <p style={{ marginBottom: "10px" }}>
+                                    Choose how you want to import this backup:
+                                </p>
+
+                                <label style={{ display: "block", marginBottom: "8px" }}>
+                                    <input
+                                        type="radio"
+                                        name="importMode"
+                                        value="merge"
+                                        checked={importMode === "merge"}
+                                        onChange={() => setImportMode("merge")}
+                                    />{" "}
+                                    Merge (keep existing data, skip duplicates)
+                                </label>
+
+                                <label style={{ display: "block" }}>
+                                    <input
+                                        type="radio"
+                                        name="importMode"
+                                        value="replace"
+                                        checked={importMode === "replace"}
+                                        onChange={() => setImportMode("replace")}
+                                    />{" "}
+                                    Replace (delete existing data)
+                                </label>
+                            </div>
+
+                            <div className="modal-footer">
+                                <button className="btn btn-secondary" onClick={() => setShowImportModal(false)}>
+                                    Cancel
+                                </button>
+                                <button className="btn btn-primary" onClick={confirmImport}>
+                                    Import
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            );
-        };
+                )}
+            </div>
+        </div>
+    );
+};
 
         // ==================== MONTHLY ANALYSIS COMPONENT ====================
         const MonthlyAnalysis = ({ transactions, selectedMonth, setSelectedMonth, selectedYear, setSelectedYear, darkMode }) => {
@@ -2162,7 +2288,6 @@
                 };
             }, [transactions, selectedMonth, selectedYear]);
 
-            // Get previous month data for comparison
             const previousMonthData = useMemo(() => {
                 let prevMonth = selectedMonth - 1;
                 let prevYear = selectedYear;
@@ -2251,7 +2376,7 @@
                             <div className="label">Monthly Income</div>
                             <div className="value positive">{formatCurrency(monthlyData.income)}</div>
                             {previousMonthData.income > 0 && (
-                                <div className={`trend ${incomeChange >= 0 ? 'up' : 'down'}`}>
+                                <div className={`trend ₹{incomeChange >= 0 ? 'up' : 'down'}`}>
                                     {incomeChange >= 0 ? '↑' : '↓'} {Math.abs(incomeChange).toFixed(1)}% vs last month
                                 </div>
                             )}
@@ -2261,7 +2386,7 @@
                             <div className="label">Monthly Expenses</div>
                             <div className="value negative">{formatCurrency(monthlyData.expense)}</div>
                             {previousMonthData.expense > 0 && (
-                                <div className={`trend ${expenseChange <= 0 ? 'up' : 'down'}`}>
+                                <div className={`trend ₹{expenseChange <= 0 ? 'up' : 'down'}`}>
                                     {expenseChange >= 0 ? '↑' : '↓'} {Math.abs(expenseChange).toFixed(1)}% vs last month
                                 </div>
                             )}
@@ -2269,12 +2394,12 @@
                         <div className="summary-card">
                             <div className="icon">💰</div>
                             <div className="label">Net Savings</div>
-                            <div className={`value ${monthlyData.balance >= 0 ? 'positive' : 'negative'}`}>
+                            <div className={`value ₹{monthlyData.balance >= 0 ? 'positive' : 'negative'}`}>
                                 {formatCurrency(monthlyData.balance)}
                             </div>
                             <div className="trend">
                                 {monthlyData.income > 0 
-                                    ? `${((monthlyData.balance / monthlyData.income) * 100).toFixed(1)}% savings rate`
+                                    ? `₹{((monthlyData.balance / monthlyData.income) * 100).toFixed(1)}% savings rate`
                                     : 'No income this month'
                                 }
                             </div>
@@ -2289,7 +2414,6 @@
                         </div>
                     </div>
 
-                    {/* NEW: Charts */}
                     {monthlyData.transactions > 0 && (
                         <div className="main-grid">
                             <div className="chart-box">
@@ -2447,7 +2571,6 @@
                     return worst;
                 }, 0);
 
-                // Prepare Chart Data
                 const chartData = {
                     monthly: {
                         labels: MONTH_NAMES,
@@ -2492,7 +2615,6 @@
                 };
             }, [transactions, selectedYear]);
 
-            // Get previous year data for comparison
             const previousYearData = useMemo(() => {
                 const filtered = transactions.filter(t => {
                     const date = new Date(t.date);
@@ -2548,7 +2670,7 @@
                             <div className="label">Yearly Income</div>
                             <div className="value positive">{formatCurrency(yearlyData.totalIncome)}</div>
                             {previousYearData.income > 0 && (
-                                <div className={`trend ${incomeChange >= 0 ? 'up' : 'down'}`}>
+                                <div className={`trend ₹{incomeChange >= 0 ? 'up' : 'down'}`}>
                                     {incomeChange >= 0 ? '↑' : '↓'} {Math.abs(incomeChange).toFixed(1)}% vs {selectedYear - 1}
                                 </div>
                             )}
@@ -2558,7 +2680,7 @@
                             <div className="label">Yearly Expenses</div>
                             <div className="value negative">{formatCurrency(yearlyData.totalExpense)}</div>
                             {previousYearData.expense > 0 && (
-                                <div className={`trend ${expenseChange <= 0 ? 'up' : 'down'}`}>
+                                <div className={`trend ₹{expenseChange <= 0 ? 'up' : 'down'}`}>
                                     {expenseChange >= 0 ? '↑' : '↓'} {Math.abs(expenseChange).toFixed(1)}% vs {selectedYear - 1}
                                 </div>
                             )}
@@ -2566,7 +2688,7 @@
                         <div className="summary-card">
                             <div className="icon">💰</div>
                             <div className="label">Net Savings</div>
-                            <div className={`value ${yearlyData.balance >= 0 ? 'positive' : 'negative'}`}>
+                            <div className={`value ₹{yearlyData.balance >= 0 ? 'positive' : 'negative'}`}>
                                 {formatCurrency(yearlyData.balance)}
                             </div>
                             <div className="trend">
@@ -2583,7 +2705,6 @@
                         </div>
                     </div>
 
-                    {/* NEW: Charts */}
                     {yearlyData.transactions > 0 && (
                         <div className="main-grid">
                             <div className="chart-box">
@@ -2620,18 +2741,17 @@
                         </div>
                     )}
 
-                    {/* Year Overview - Month Boxes */}
                     <div className="chart-box">
                         <h3>🗓️ Monthly Balances</h3>
                         <div className="year-overview">
                             {yearlyData.monthlyBreakdown.map((month, index) => (
                                 <div 
                                     key={index} 
-                                    className={`month-box ${index === yearlyData.bestMonth ? 'active' : ''}`}
-                                    title={`${FULL_MONTH_NAMES[index]}: Income ${formatCurrency(month.income)}, Expense ${formatCurrency(month.expense)}`}
+                                    className={`month-box ₹{index === yearlyData.bestMonth ? 'active' : ''}`}
+                                    title={`₹{FULL_MONTH_NAMES[index]}: Income ₹{formatCurrency(month.income)}, Expense ₹{formatCurrency(month.expense)}`}
                                 >
                                     <div className="month-name">{MONTH_NAMES[index]}</div>
-                                    <div className={`month-total ${month.balance >= 0 ? 'positive' : 'negative'}`}>
+                                    <div className={`month-total ₹{month.balance >= 0 ? 'positive' : 'negative'}`}>
                                         {month.balance >= 0 ? '+' : ''}{formatCurrency(month.balance)}
                                     </div>
                                 </div>
@@ -2686,7 +2806,7 @@
                                 <div className="comparison-item">
                                     <span className="label">Savings Rate</span>
                                     <span className="value">
-                                        <span className={`trend-indicator ${yearlyData.savingsRate >= 0 ? 'positive' : 'negative'}`}>
+                                        <span className={`trend-indicator ₹{yearlyData.savingsRate >= 0 ? 'positive' : 'negative'}`}>
                                             {yearlyData.savingsRate.toFixed(1)}%
                                         </span>
                                     </span>
@@ -2720,13 +2840,13 @@
                             <h2>📊 Financial Analysis</h2>
                             <div className="analysis-tabs">
                                 <button 
-                                    className={`analysis-tab ${activeTab === 'monthly' ? 'active' : ''}`}
+                                    className={`analysis-tab ₹{activeTab === 'monthly' ? 'active' : ''}`}
                                     onClick={() => setActiveTab('monthly')}
                                 >
                                     📅 Monthly
                                 </button>
                                 <button 
-                                    className={`analysis-tab ${activeTab === 'yearly' ? 'active' : ''}`}
+                                    className={`analysis-tab ₹{activeTab === 'yearly' ? 'active' : ''}`}
                                     onClick={() => setActiveTab('yearly')}
                                 >
                                     📆 Yearly
@@ -2759,7 +2879,6 @@
 
         // ==================== MAIN APP COMPONENT ====================
         const App = () => {
-            // State
             const [transactions, setTransactions] = useState([]);
             const [filters, setFilters] = useState({
                 searchTerm: '',
@@ -2771,7 +2890,6 @@
             const [toasts, setToasts] = useState([]);
             const [darkMode, setDarkMode] = useState(false);
 
-            // Load data from localStorage on mount
             useEffect(() => {
                 try {
                     const saved = localStorage.getItem(STORAGE_KEY);
@@ -2785,7 +2903,6 @@
                 }
             }, []);
 
-            // Save data to localStorage whenever transactions or dark mode changes
             useEffect(() => {
                 try {
                     localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -2797,12 +2914,10 @@
                 }
             }, [transactions, darkMode]);
 
-            // Apply dark mode
             useEffect(() => {
                 document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
             }, [darkMode]);
 
-            // Toast management
             const addToast = useCallback((message, type = 'info') => {
                 const id = generateId();
                 setToasts(prev => [...prev, { id, message, type }]);
@@ -2812,7 +2927,6 @@
                 setToasts(prev => prev.filter(t => t.id !== id));
             }, []);
 
-            // Transaction handlers
             const handleAddTransaction = useCallback((transaction) => {
                 setTransactions(prev => [...prev, transaction]);
             }, []);
@@ -2883,8 +2997,6 @@
                         </div>
 
                         <Statistics transactions={transactions} />
-
-                        {/* NEW: Analysis Section with Charts */}
                         <AnalysisSection transactions={transactions} darkMode={darkMode} />
 
                         <footer className="footer">
@@ -2893,7 +3005,6 @@
                         </footer>
                     </div>
 
-                    {/* Edit Modal */}
                     {editingTransaction && (
                         <EditModal
                             transaction={editingTransaction}
@@ -2902,7 +3013,6 @@
                         />
                     )}
 
-                    {/* Delete Confirmation Modal */}
                     {deletingId && (
                         <DeleteModal
                             onConfirm={handleDeleteTransaction}
