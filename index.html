@@ -1694,7 +1694,6 @@
  </script>
  <script type="text/babel">
     const { useEffect, useMemo, useRef, useState, useCallback } = React;
-  
     // ==================== CONSTANTS ====================
     const INCOME_CATEGORIES = [
       { value: "salary", label: "Salary", icon: "💰" },
@@ -2454,130 +2453,173 @@
     );
   
     // ==================== DATA MANAGEMENT (MERGE/REPLACE + DUPLICATE PROTECTION) ====================
-    const DataManagement = ({ transactions, onImportTransactions, onReplaceTransactions, addToast }) => {
-      const [showImportModal, setShowImportModal] = useState(false);
-      const [importMode, setImportMode] = useState("merge");
-      const [pendingData, setPendingData] = useState(null);
-  
-      const exportJSON = () => {
-        const blob = new Blob([JSON.stringify(transactions, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `expense-tracker-${getCurrentDate()}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        addToast("Exported JSON", "success");
-      };
-  
-      const exportCSV = () => {
-        const headers = ["Date", "Description", "Type", "Category", "Amount", "Notes"];
-        const rows = transactions.map((t) => {
-          const info = getCategoryInfo(t.category, t.type);
-          return [
-            t.date,
-            `"${String(t.description || "").replaceAll('"', '""')}"`,
-            t.type,
-            `"${String(info.label || "").replaceAll('"', '""')}"`,
-            Number(t.amount || 0),
-            `"${String(t.notes || "").replaceAll('"', '""')}"`,
-          ].join(",");
-        });
-        const csv = [headers.join(","), ...rows].join("\n");
-        const blob = new Blob([csv], { type: "text/csv" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `expense-tracker-${getCurrentDate()}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-        addToast("Exported CSV", "success");
-      };
-  
-      const onPickFile = (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-  
-        const reader = new FileReader();
-        reader.onload = () => {
-          try {
-            const parsed = JSON.parse(String(reader.result || ""));
-            if (!Array.isArray(parsed)) throw new Error("Invalid file format");
-            setPendingData(parsed);
-            setImportMode("merge");
-            setShowImportModal(true);
-          } catch {
-            addToast("Import failed: invalid JSON file.", "error");
-          } finally {
-            e.target.value = "";
-          }
-        };
-        reader.readAsText(file);
-      };
-  
-      const confirmImport = () => {
-        if (!Array.isArray(pendingData)) return;
-        if (importMode === "replace") onReplaceTransactions(pendingData);
-        else onImportTransactions(pendingData);
-        setPendingData(null);
-        setShowImportModal(false);
-      };
-  
-      return (
-        <div className="card">
-          <div className="card-header">
-            <h2>⚙️ Data Management</h2>
-          </div>
-          <div className="card-body">
-            <div className="data-actions">
-              <button className="btn btn-primary btn-sm" onClick={exportJSON}>
-                📥 Export JSON
-              </button>
-              <button className="btn btn-primary btn-sm" onClick={exportCSV}>
-                📊 Export CSV
-              </button>
-  
-              <label className="btn btn-secondary btn-sm">
-                📤 Import JSON
-                <input className="file-input" type="file" accept=".json" onChange={onPickFile} />
-              </label>
-            </div>
-  
-            {showImportModal && (
-              <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
-                <div className="modal" onClick={(e) => e.stopPropagation()}>
-                  <div className="modal-header">
-                    <h2>📤 Import Options</h2>
-                    <button className="modal-close" onClick={() => setShowImportModal(false)}>
-                      &times;
-                    </button>
-                  </div>
-                  <div className="modal-body">
-                    <p style={{ marginBottom: 12 }}>Choose how to import:</p>
-                    <label style={{ display: "block", marginBottom: 10 }}>
-                      <input type="radio" checked={importMode === "merge"} onChange={() => setImportMode("merge")} />{" "}
-                      <strong>Merge</strong> (skip duplicates)
-                    </label>
-                    <label style={{ display: "block" }}>
-                      <input type="radio" checked={importMode === "replace"} onChange={() => setImportMode("replace")} />{" "}
-                      <strong>Replace</strong> (overwrite everything)
-                    </label>
-                  </div>
-                  <div className="modal-footer">
-                    <button className="btn btn-secondary" onClick={() => setShowImportModal(false)}>
-                      Cancel
-                    </button>
-                    <button className="btn btn-primary" onClick={confirmImport}>
-                      Import
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+    const DataManagement = ({ transactions, onImportTransactions, onReplaceTransactions, onClearAll, addToast }) => {
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importMode, setImportMode] = useState("merge");
+  const [pendingData, setPendingData] = useState(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const exportJSON = () => {
+    const blob = new Blob([JSON.stringify(transactions, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `expense-tracker-${getCurrentDate()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast("Exported JSON", "success");
+  };
+
+  const exportCSV = () => {
+    const headers = ["Date", "Description", "Type", "Category", "Amount", "Notes"];
+    const rows = transactions.map((t) => {
+      const info = getCategoryInfo(t.category, t.type);
+      return [
+        t.date,
+        `"${String(t.description || "").replaceAll('"', '""')}"`,
+        t.type,
+        `"${String(info.label || "").replaceAll('"', '""')}"`,
+        Number(t.amount || 0),
+        `"${String(t.notes || "").replaceAll('"', '""')}"`,
+      ].join(",");
+    });
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `expense-tracker-${getCurrentDate()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast("Exported CSV", "success");
+  };
+
+  const onPickFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result || ""));
+        if (!Array.isArray(parsed)) throw new Error("Invalid file format");
+        setPendingData(parsed);
+        setImportMode("merge");
+        setShowImportModal(true);
+      } catch {
+        addToast("Import failed: invalid JSON file.", "error");
+      } finally {
+        e.target.value = "";
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const confirmImport = () => {
+    if (!Array.isArray(pendingData)) return;
+    if (importMode === "replace") onReplaceTransactions(pendingData);
+    else onImportTransactions(pendingData);
+    setPendingData(null);
+    setShowImportModal(false);
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <h2>⚙️ Data Management</h2>
+      </div>
+      <div className="card-body">
+        <div className="data-actions">
+          <button className="btn btn-primary btn-sm" onClick={exportJSON}>
+            📥 Export JSON
+          </button>
+          <button className="btn btn-primary btn-sm" onClick={exportCSV}>
+            📊 Export CSV
+          </button>
+
+          <label className="btn btn-secondary btn-sm">
+            📤 Import JSON
+            <input className="file-input" type="file" accept=".json" onChange={onPickFile} />
+          </label>
+          
+          <button 
+            className="btn btn-danger btn-sm" 
+            onClick={() => setShowClearConfirm(true)}
+            disabled={transactions.length === 0}
+          >
+            🗑️ Clear All
+          </button>
         </div>
-      );
-    }; 
+
+        {showImportModal && (
+          <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>📤 Import Options</h2>
+                <button className="modal-close" onClick={() => setShowImportModal(false)}>
+                  &times;
+                </button>
+              </div>
+              <div className="modal-body">
+                <p style={{ marginBottom: 12 }}>Choose how to import:</p>
+                <label style={{ display: "block", marginBottom: 10 }}>
+                  <input type="radio" checked={importMode === "merge"} onChange={() => setImportMode("merge")} />{" "}
+                  <strong>Merge</strong> (skip duplicates)
+                </label>
+                <label style={{ display: "block" }}>
+                  <input type="radio" checked={importMode === "replace"} onChange={() => setImportMode("replace")} />{" "}
+                  <strong>Replace</strong> (overwrite everything)
+                </label>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowImportModal(false)}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" onClick={confirmImport}>
+                  Import
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showClearConfirm && (
+          <div className="modal-overlay" onClick={() => setShowClearConfirm(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>⚠️ Clear All Transactions</h2>
+                <button className="modal-close" onClick={() => setShowClearConfirm(false)}>
+                  &times;
+                </button>
+              </div>
+              <div className="modal-body">
+                <p>Are you sure you want to delete <strong>ALL {transactions.length}</strong> transactions?</p>
+                <p style={{ color: 'var(--expense-color)', marginTop: 10 }}>
+                  <strong>⚠️ This action cannot be undone!</strong>
+                </p>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowClearConfirm(false)}>
+                  Cancel
+                </button>
+                <button 
+                  className="btn btn-danger" 
+                  onClick={() => {
+                    onClearAll();
+                    setShowClearConfirm(false);
+                  }}
+                >
+                  🗑️ Yes, Clear All
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+       
     const AnalysisSection = ({ transactions }) => {
   const [activeTab, setActiveTab] = useState("monthly"); // monthly | yearly
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -3869,6 +3911,31 @@
         if (isOnline && autoSync) flushQueueToCloud(user.uid).catch(() => {});
         addToast(`Replaced with ${imported.length} transactions.`, "success");
       };
+      // -------------------- Clear All --------------------
+const clearAllTransactions = () => {
+  if (!user?.uid) return;
+  
+  if (transactions.length === 0) {
+    addToast("No transactions to clear", "info");
+    return;
+  }
+
+  // Queue delete for all existing transactions
+  for (const t of transactions) {
+    enqueueDelete(user.uid, t.id);
+  }
+
+  // Clear state and local storage
+  setTransactions([]);
+  saveLocal(user.uid, []);
+
+  // Flush if online
+  if (isOnline && autoSync) {
+    flushQueueToCloud(user.uid).catch(() => {});
+  }
+
+  addToast("All transactions cleared", "info");
+};
   
       // -------------------- Manual sync --------------------
       const manualSync = async () => {
@@ -3996,6 +4063,7 @@
                 transactions={transactions}
                 onImportTransactions={importMerge}
                 onReplaceTransactions={importReplace}
+                onClearAll={clearAllTransactions}
                 addToast={addToast}
               />
             </div>
